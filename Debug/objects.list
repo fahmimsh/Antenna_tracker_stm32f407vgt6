@@ -1,4 +1,3 @@
-"Core/Src/GPSParse.o"
 "Core/Src/HMC5883L.o"
 "Core/Src/I2Cdev.o"
 "Core/Src/main.o"

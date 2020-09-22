@@ -70,21 +70,12 @@ DMA_HandleTypeDef hdma_usart3_rx;
 /* USER CODE BEGIN PV */
 uint8_t buffer[200];
 uint16_t ukuranstring;
-//----Deklarasi Varialbe Global ---
-union Floating{
-	uint8_t bytes[4];
-	float value;
-};
-union Doublee{
-	uint8_t bytes[8];
-	double value1;
-};
 //----------KOMPAS-------
 int16_t x_heading, y_heading, z_heading;
 float heading, headingDegrees, declinationAngle;
 //---------potensio------
 uint32_t data_potensio;
-float analog_potensio, potensio;
+float analog_potensio;
 //---------var Control PID-----
 int Out_PIDPITCH, Out_PIDYAW;
 int dir_pitch = 0;
@@ -102,8 +93,8 @@ float data_lat, data_longi;
 int data_time;
 char lat[15],lat_char[15],longi[15],longi_char[15],valid[15],time[15];
 float latitude,longitude,latitude_zero,longitude_zero,selisih_gps_lat,selisih_gps_long;
-union Floating currentLat, currentLong;
-union Doublee currentLat1, currentLong1;
+float currentLat, currentLong;
+double currentLat1, currentLong1;
 DMA_Event_t dma_uart_rx = {0, 0, DMA_BUF_SIZE};
 uint8_t dma_rx_buf[DMA_BUF_SIZE];
 uint8_t data[DMA_BUF_SIZE] = {'\0'};
@@ -113,6 +104,9 @@ DMA_Event_t dma_uart1_rx = {0, 0, DMA_BUF_SIZE};
 uint8_t dma_rx1_buf[DMA_BUF_SIZE];
 uint8_t data_input[DMA_BUF_SIZE] = {'\0'};
 bool USART1DataFlag = false;
+char setPoint_pitchAct[10], setPoint_yawAct[10];
+float setPoint_pitch = 0, setPoint_yaw=1;
+int cek_in, flag_in, a_in, nomor_parsing_in, ke_in = 0, metu_in, mode_in = 0;
 // --------drivermotor---
 int arah;
 uint16_t pwm;
@@ -139,8 +133,8 @@ float baca_potensio(){
 		  HAL_ADC_Stop(&hadc1);
 		  data_potensio = HAL_ADC_GetValue(&hadc1);
 		  analog_potensio = (float)data_potensio;
-		  if (analog_potensio > 3500) analog_potensio = 3500;
-		  return analog_potensio*(180.0f/3500.0f);
+		  if (analog_potensio > 4000) analog_potensio = 4000;
+		  return analog_potensio*(180.0f/4000.0f);
 }
 void HMC5883LInit(){
 	HMC5883L_initialize();
@@ -157,11 +151,8 @@ void HMC5883LInit(){
 float bacaheading(){
 	HMC5883L_getHeading(&x_heading, &y_heading, &z_heading);
 	heading = (atan2(x_heading, y_heading));
-	ukuranstring = sprintf((char*)buffer, "data heading = %2.f\r\n", heading);
-	HAL_UART_Transmit(&huart1, buffer, ukuranstring, 10);
-
-/*	declinationAngle = 0.22;				//data untuk mendahului gerakan yaw saat wahana cepat
-	heading += declinationAngle;*/
+	declinationAngle = 0.22;				//data untuk mendahului gerakan yaw saat wahana cepat
+	heading += declinationAngle;
 	//normalise PI 0 sampai dengan 360
 	if (heading < 0){
 		heading += 2*PI;
@@ -169,9 +160,7 @@ float bacaheading(){
 	if (heading > 2*PI){
 		heading -= 2*PI;
 	}
-	//konversi dari data radian menjadi degree
-	headingDegrees = heading * 180 / M_PI;
-
+	headingDegrees = heading * 180 / M_PI;	//konversi dari data radian menjadi degree
 	if (headingDegrees < 0) headingDegrees += 360;
 	else if (headingDegrees > 360) headingDegrees -= 360;
 	return headingDegrees;
@@ -183,6 +172,7 @@ void cek_heading(){
 	if(data_heading == 0.0){
 		ukuranstring = sprintf((char*)buffer, "data heading INVALID !!\r\n");
 		HAL_UART_Transmit(&huart1, buffer, ukuranstring, 10);
+		return;
 	}
 }
 void SetDriverMotor_yaw(int arah, uint16_t pwm){
@@ -211,72 +201,7 @@ void SetDriverMotor_pitch(int arah, uint16_t pwm ){
 	}
 	__HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_2, pwm);
 }
-//------------------------PID CONTROL-----------------------
-void PID_PITCH(){
-	//errorPitch = setPoint_pitch - data_heading;
-	int maxPitchSpeed = 200;
-	if (errorPitch < 0){
-		dir_pitch = 0;   //TURUN
-		maxPitchSpeed = 90;
-	} else {
-		dir_pitch = 1;  //NAIK
-	}
-
-	pitch_P  = KP_PITCH * errorPitch;
-	pitch_I += KI_PITCH * errorPitch;
-	pitch_D  = KD_PITCH * (errorPitch - last_errorPitch);
-
-	if (-5.0f < errorPitch && errorPitch < 5.0f){
-		if (pitch_I > 90)
-			pitch_I = 90;
-		else if (pitch_I < (-90)){
-			pitch_I = -90;
-			KI_pitch = 0.5;
-		}
-	} else {
-		KI_pitch = 0.9;
-	}
-	Out_PIDPITCH = pitch_P + pitch_I + pitch_D;
-	if (Out_PIDPITCH < 0)Out_PIDPITCH *= -1;
-	if (Out_PIDPITCH > maxPitchSpeed) Out_PIDPITCH = maxPitchSpeed;
-	if (errorPitch == 0) Out_PIDPITCH = 0;
-		SetDriverMotor_pitch(dir_pitch, Out_PIDPITCH);
-		last_errorPitch = errorPitch;
-}
-void PID_YAW(){
-/*	errorYaw = setPoint_yaw - data_heading;
-	if (data_heading >= 265 && setPoint_yaw <= 95){
-		errorYaw += 359;
-	} else if (data_heading <= 95 && setPoint_yaw >= 265){
-		errorYaw += 359;
-		errorYaw *= -1;
-	}*/
-	if (errorYaw < 0){
-		dir_yaw = 1;
-	} else {
-		dir_yaw = 0;
-	}
-
-	yaw_P  = KP_YAW * errorYaw;
-	yaw_I += KI_YAW * errorYaw;
-	yaw_D  = KD_YAW * (errorYaw - last_errorYaw);
-
-	if (-5.0f < errorYaw && errorYaw < 5.0f){
-		if (yaw_I > 120) yaw_I = -120;
-		else if (-2.0f < errorYaw && errorYaw < 2.0f) KI_yaw = 0.2;
-		else (KI_yaw = 0.4);
-	} else {
-		KI_yaw = 0.4;
-	}
-	Out_PIDYAW = yaw_P + yaw_I + yaw_D;
-
-	if (Out_PIDYAW < 0) Out_PIDYAW *= -1;
-	if (Out_PIDYAW > 250) Out_PIDYAW = 250;
-
-	if (-1.5f < errorYaw && errorYaw < 1.5f) Out_PIDYAW = 0;
-	SetDriverMotor_yaw(dir_yaw, Out_PIDYAW);
-	last_errorYaw = errorYaw;
-}
+//-----------parsing Data GPS---------------
 void ParsedataGPS_GNGLL(void){
 	if (flag2 == 2){
 		for (cek2 = a2; cek2 < sizeof(data); cek2++){
@@ -398,26 +323,38 @@ void ParsedataGPS_GNRMC(void){
 	data_longi = atof(longi);
 }
 void GPS_Validasi(void){
-	for (cek2 = 0; cek2 < sizeof(data); cek2++){
-		if(('$' == data[cek2]) && ('G' == data[cek2+1]) && ('N' == data[cek2+2]) && ('G' == data[cek2+3]) && ('L' == data[cek2+4]) && ('L' == data[cek2+5]) && (flag2 == 0)){
-			if (flag2 == 0){
-				a2 = cek2 + 6;
+	for (cek2 = 0; cek2 < sizeof(gps); cek2++){
+		if(('$' == gps[cek2]) && ('G' == gps[cek2+1]) && ('N' == gps[cek2+2]) && ('G' == gps[cek2+3]) && ('L' == gps[cek2+4]) && ('L' == gps[cek2+5]) && (flag2 == 0))
+		{
+			if(flag2 == 0) {
+				a2 = cek2+6;
 				flag2 = 2;
-			} ParsedataGPS_GNGLL();
+			}
+			ParsedataGPS_GNGLL();
 		}
-		else if (('$' == data[cek2]) && ('G' == data[cek2+1]) && ('N' == data[cek2+2]) && ('G' == data[cek2+3]) && ('G' == data[cek2+4]) && ('A' == data[cek2+5]) && (flag2 == 0)){
-			if (flag2 == 0){
-				a2 = cek2 + 6;
+		else if (('$' == gps[cek2]) && ('G' == gps[cek2+1]) && ('N' == gps[cek2+2]) && ('G' == gps[cek2+3]) && ('G' == gps[cek2+4]) && ('A' == gps[cek2+5]) && (flag2 == 0))
+		{
+			if(flag2 == 0) {
+				a2 = cek2+6;
 				flag2 = 2;
-			} ParsedataGPS_GNGGA();
+			}
+			ParsedataGPS_GNGGA();
 		}
-		else if (('$' == data[cek2]) && ('G' == data[cek2+1]) && ('N' == data[cek2+2]) && ('R' == data[cek2+3]) && ('M' == data[cek2+4]) && ('C' == data[cek2+5]) && (flag2 == 0)){
-			if (flag2 == 0){
-				a2 = cek2 + 6;
+		else if(('$' == gps[cek2]) && ('G' == gps[cek2+1]) && ('N' == gps[cek2+2]) && ('R' == gps[cek2+3]) && ('M' == gps[cek2+4]) && ('C' == gps[cek2+5]) && (flag2 == 0))
+		{
+				if(flag2 == 0) {
+				a2 = cek2+6;
 				flag2 = 2;
-			} ParsedataGPS_GNRMC();
 		}
+				ParsedataGPS_GNRMC();
 	}
+  }
+}
+void pindah_data_gps(){
+	  currentLat = dms_dd(data_lat, lat_char[0]);
+	  currentLong = dms_dd(data_longi, longi_char[0]);
+	  currentLat1 = currentLat;
+	  currentLong1 = currentLong;
 }
 void dms_dd(float in_coords, char angin){
 	float f = in_coords;
@@ -443,9 +380,7 @@ void dms_dd(float in_coords, char angin){
 }
 void baca_input(){
 	if(USART1DataFlag == true){
-/*	   ukuranstring = sprintf((char*)buffer, "data INPUT = %s", data_input);
-	   HAL_UART_Transmit(&huart1, buffer, ukuranstring, 10);
-	   if(data_input[0] == '#'){
+/*	   if(data_input[0] == '#'){
 		   if (data_input[2] == '0'){
 			   arah = 0;
 		   }else if(data_input[2] == '1'){
@@ -459,9 +394,119 @@ void baca_input(){
 		   }else if(data_input[1] == 'p'){
 				  SetDriverMotor_pitch(arah, pwm);
 		   }
-	   }
-	   USART1DataFlag = false;*/
+	   }*/
+		for (cek_in = 0; cek_in<sizeof(data_input); cek_in++){
+			if ('#' == data_input[cek_in] && flag_in == 0){
+				if(flag_in == 0){
+					a_in = cek_in + 1;
+					flag_in = 2;
+				}
+				break;
+			}
+		}
+		if (flag_in == 2){
+			for (cek_in = a_in; cek_in < sizeof(data_input); cek_in++){
+				if (data_input[cek_in] == ','){
+					nomor_parsing_in++;
+					ke_in = 0;
+					continue;
+				}
+				else {
+					if (nomor_parsing_in == 1){
+						setPoint_pitchAct[ke_in] = data_input[cek_in];
+					}
+					if (nomor_parsing_in == 2){
+						setPoint_yawAct[ke_in] = data_input[cek_in];
+					}
+					else if (nomor_parsing_in > 2){
+						nomor_parsing_in =0;
+						flag_in = 0;
+						metu_in = 1;
+						break;
+					}
+					ke_in++;
+				}
+			}
+		}
+		setPoint_pitch = atof (setPoint_pitchAct);
+		setPoint_yaw = atof (setPoint_yawAct);
+		if (setPoint_pitch > 90) setPoint_pitch = 90;
+		if (setPoint_pitch <  0) setPoint_pitch = 0;
+		if (setPoint_yaw > 359) setPoint_yaw= 359;
+		if (setPoint_yaw <  1 ) setPoint_yaw = 1;
+		ukuranstring = sprintf((char*)buffer, "data INPUT = %s | %f | %f\r\n", data_input, setPoint_pitch, setPoint_yaw);
+		HAL_UART_Transmit(&huart1, buffer, ukuranstring, 10);
+	   USART1DataFlag = false;
 	}
+}
+//------------------------PID CONTROL-----------------------
+void PID_PITCH(){
+	errorPitch = setPoint_pitch - data_Pitch1;
+	int maxPitchSpeed = 200;
+	if (errorPitch < 0){
+		dir_pitch = 0;   //TURUN
+		maxPitchSpeed = 90;
+	} else {
+		dir_pitch = 1;  //NAIK
+	}
+
+	pitch_P  = KP_PITCH * errorPitch;
+	pitch_I += KI_PITCH * errorPitch;
+	pitch_D  = KD_PITCH * (errorPitch - last_errorPitch);
+
+	if (-5.0f < errorPitch && errorPitch < 5.0f){
+		if (pitch_I > 90)
+			pitch_I = 90;
+		else if (pitch_I < (-90)){
+			pitch_I = -90;
+			KI_pitch = 0.5;
+		}
+	} else {
+		KI_pitch = 0.9;
+	}
+	Out_PIDPITCH = pitch_P + pitch_I + pitch_D;
+	if (Out_PIDPITCH < 0)Out_PIDPITCH *= -1;
+	if (Out_PIDPITCH > maxPitchSpeed) Out_PIDPITCH = maxPitchSpeed;
+	if (errorPitch == 0) Out_PIDPITCH = 0;
+		SetDriverMotor_pitch(dir_pitch, Out_PIDPITCH);
+		last_errorPitch = errorPitch;
+}
+void PID_YAW(){
+	errorYaw = setPoint_yaw - data_heading;
+	if (data_heading >= 265 && setPoint_yaw <= 95){
+		errorYaw += 359;
+	} else if (data_heading <= 95 && setPoint_yaw >= 265){
+		errorYaw += 359;
+		errorYaw *= -1;
+	}
+	if (errorYaw < 0){
+		dir_yaw = 1;
+	} else {
+		dir_yaw = 0;
+	}
+
+	yaw_P  = KP_YAW * errorYaw;
+	yaw_I += KI_YAW * errorYaw;
+	yaw_D  = KD_YAW * (errorYaw - last_errorYaw);
+
+	if (-5.0f < errorYaw && errorYaw < 5.0f){
+		if (yaw_I > 120) yaw_I = -120;
+		else if (-2.0f < errorYaw && errorYaw < 2.0f) KI_yaw = 0.2;
+		else (KI_yaw = 0.4);
+	} else {
+		KI_yaw = 0.4;
+	}
+	Out_PIDYAW = yaw_P + yaw_I + yaw_D;
+
+	if (Out_PIDYAW < 0) Out_PIDYAW *= -1;
+	if (Out_PIDYAW > 250) Out_PIDYAW = 250;
+
+	if (-1.5f < errorYaw && errorYaw < 1.5f) Out_PIDYAW = 0;
+	SetDriverMotor_yaw(dir_yaw, Out_PIDYAW);
+	last_errorYaw = errorYaw;
+}
+void kirim_GCS(){
+
 }
 /* USER CODE END 0 */
 
@@ -505,7 +550,6 @@ int main(void)
   HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_2);
   HMC5883LInit();
   bacaheading();
-  GetHMC5893L();
   HAL_ADC_Start(&hadc1);
   __HAL_UART_ENABLE_IT(&huart3, UART_IT_IDLE);
 
@@ -526,39 +570,36 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  ukuranstring = sprintf((char*)buffer, "=========SISTEM DICOBA======\r\n");
+  HAL_UART_Transmit(&huart1, buffer, ukuranstring, 5);
   while (1)
   {
-	  /*send : "i,{arahVertikal},{arahHorizontal}\n*/
-	  baca_input();
-/*	 ===== CEK driver motor ====
-	  SetDriverMotor_yaw(0,255);
-	  SetDriverMotor_pitch(0,250);*/
-	  /*=======DATA POTENSIO====*/
-/*	  potensio = baca_potensio();
-	  ukuranstring = sprintf((char*)buffer, "data poternsio = %f\r\n", potensio);
-	  HAL_UART_Transmit(&huart1, buffer, ukuranstring, 10);
-	  ======DATA GPS ======*/
-	  if(USART3DataFlag == true){
+	  /*send : "#,{arahVertikal},{arahHorizontal}\n	   */
+	  /*======DATA GPS ======*/
+/*	  if(USART3DataFlag == true){
 		  strcpy(gps, data);
 		  GPS_Validasi();
-		  currentLat.value = dms_dd (data_lat, lat_char[0]);
-		  currentLong.value = dms_dd (data_longi, longi_char[0]);
-		  currentLat1.value1 = currentLat; currentLong = currentLong;
+		  pindah_data_gps();
 			  ukuranstring = sprintf((char*)buffer, "data GPS = %s", data);
 			  HAL_UART_Transmit(&huart1, buffer, ukuranstring, 50);
+			  ukuranstring = sprintf ((char*)buffer, "GPS = %f  | %f == %f | %f\r\n", currentLat1, currentLong1, data_lat, data_longi);
+		  	  HAL_UART_Transmit(&huart1, buffer, ukuranstring, 10);
 			  USART3DataFlag = false;
+	  }*/
+	  /*=======DATA HMC5893L & POTENSIO====*/
+	  if(HMC5883L_getReadyStatus()){
+		  GetHMC5893L();
+		  ukuranstring = sprintf((char*)buffer, "X : %d   Y : %d   Z : %d || X = %2.f degree= %2.f\r\n", x_heading, y_heading, z_heading, heading, data_heading);
+		  //HAL_UART_Transmit(&huart1, buffer, ukuranstring, 30);
 	  }
-	  /*======DATA INPUT=====*/
-	 /* if(USART1DataFlag == true){
-		  ukuranstring = sprintf((char*)buffer, "data INPUT = %s", data_input);
-		  HAL_UART_Transmit(&huart1, buffer, ukuranstring, 10);
-		  USART1DataFlag = false;
-	  }*/
-/*	  if(HMC5883L_getReadyStatus()){
-	  HMC5883L_getHeading(&x_heading, &y_heading, &z_heading);
-	  ukuranstring = sprintf((char*)buffer, "X : %d   Y : %d   Z : %d || X = %2.f degree= %2.f\r\n", x_heading, y_heading, z_heading, heading, headingDegrees);
-	  HAL_UART_Transmit(&huart1, buffer, ukuranstring, 30);
-	  }*/
+	  data_Pitch1 = baca_potensio();
+	  ukuranstring = sprintf((char*)buffer, "POTENSIO = %f | %f\r\n", data_Pitch1, analog_potensio);
+	  HAL_UART_Transmit(&huart1, buffer, ukuranstring, 10);
+	  cek_heading();
+	  baca_input();
+	  HAL_Delay(100);
+	  PID_YAW();
+	  PID_PITCH();
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
