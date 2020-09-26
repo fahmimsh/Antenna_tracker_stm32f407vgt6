@@ -57,13 +57,16 @@
 
 /* External variables --------------------------------------------------------*/
 extern ADC_HandleTypeDef hadc1;
+extern DMA_HandleTypeDef hdma_uart4_rx;
 extern DMA_HandleTypeDef hdma_usart1_rx;
 extern DMA_HandleTypeDef hdma_usart3_rx;
+extern UART_HandleTypeDef huart4;
 extern UART_HandleTypeDef huart1;
 extern UART_HandleTypeDef huart3;
 /* USER CODE BEGIN EV */
-extern DMA_Event_t dma_uart_rx;
+extern DMA_Event_t dma_uart4_rx;
 extern DMA_Event_t dma_uart1_rx;
+extern DMA_Event_t dma_uart3_rx;
 /* USER CODE END EV */
 
 /******************************************************************************/
@@ -191,21 +194,30 @@ void SysTick_Handler(void)
   /* USER CODE END SysTick_IRQn 0 */
   HAL_IncTick();
   /* USER CODE BEGIN SysTick_IRQn 1 */
-  if(dma_uart_rx.timer == 1)
-      {
+  	  //uart 4
+  	  if(dma_uart4_rx.timer == 1)
+      	  {
           /* DMA Timeout event: set Timeout Flag and call DMA Rx Complete Callback */
-          dma_uart_rx.flag = 1;
-          hdma_usart3_rx.XferCpltCallback(&hdma_usart3_rx);
-      }
-      if(dma_uart_rx.timer) { --dma_uart_rx.timer; }
-
+          dma_uart4_rx.flag = 1;
+          hdma_uart4_rx.XferCpltCallback(&hdma_uart4_rx);
+      	  }
+      if(dma_uart4_rx.timer) { --dma_uart4_rx.timer; }
+      //usart 1
       if(dma_uart1_rx.timer == 1)
           {
               /* DMA Timeout event: set Timeout Flag and call DMA Rx Complete Callback */
               dma_uart1_rx.flag = 1;
               hdma_usart1_rx.XferCpltCallback(&hdma_usart1_rx);
           }
-          if(dma_uart1_rx.timer) { --dma_uart1_rx.timer; }
+       if(dma_uart1_rx.timer) { --dma_uart1_rx.timer; }
+       //usart2
+       if(dma_uart3_rx.timer == 1)
+         {
+            	/* DMA Timeout event: set Timeout Flag and call DMA Rx Complete Callback */
+                dma_uart3_rx.flag = 1;
+                hdma_usart3_rx.XferCpltCallback(&hdma_usart3_rx);
+          }
+       if(dma_uart3_rx.timer) { --dma_uart3_rx.timer; }
   /* USER CODE END SysTick_IRQn 1 */
 }
 
@@ -228,6 +240,20 @@ void DMA1_Stream1_IRQHandler(void)
   /* USER CODE BEGIN DMA1_Stream1_IRQn 1 */
 
   /* USER CODE END DMA1_Stream1_IRQn 1 */
+}
+
+/**
+  * @brief This function handles DMA1 stream2 global interrupt.
+  */
+void DMA1_Stream2_IRQHandler(void)
+{
+  /* USER CODE BEGIN DMA1_Stream2_IRQn 0 */
+
+  /* USER CODE END DMA1_Stream2_IRQn 0 */
+  HAL_DMA_IRQHandler(&hdma_uart4_rx);
+  /* USER CODE BEGIN DMA1_Stream2_IRQn 1 */
+
+  /* USER CODE END DMA1_Stream2_IRQn 1 */
 }
 
 /**
@@ -273,13 +299,32 @@ void USART3_IRQHandler(void)
     {
         __HAL_UART_CLEAR_IDLEFLAG(&huart3);
         /* Start DMA timer */
-        dma_uart_rx.timer = DMA_TIMEOUT_MS;
+        dma_uart3_rx.timer = DMA_TIMEOUT_MS;
     }
   /* USER CODE END USART3_IRQn 0 */
   HAL_UART_IRQHandler(&huart3);
   /* USER CODE BEGIN USART3_IRQn 1 */
 
   /* USER CODE END USART3_IRQn 1 */
+}
+
+/**
+  * @brief This function handles UART4 global interrupt.
+  */
+void UART4_IRQHandler(void)
+{
+  /* USER CODE BEGIN UART4_IRQn 0 */
+    if(__HAL_UART_GET_FLAG(&huart4, UART_FLAG_IDLE) != RESET)
+    {
+        __HAL_UART_CLEAR_IDLEFLAG(&huart4);
+        /* Start DMA timer */
+        dma_uart4_rx.timer = DMA_TIMEOUT_MS;
+    }
+  /* USER CODE END UART4_IRQn 0 */
+  HAL_UART_IRQHandler(&huart4);
+  /* USER CODE BEGIN UART4_IRQn 1 */
+
+  /* USER CODE END UART4_IRQn 1 */
 }
 
 /**
