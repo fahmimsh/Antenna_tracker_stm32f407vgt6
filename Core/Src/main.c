@@ -46,9 +46,9 @@
 #define KI_YAW 0
 #define KD_YAW 55
 		/*PID PITCH*/
-#define KP_PITCH 70
+#define KP_PITCH 100
 #define KI_PITCH 0
-#define KD_PITCH 15
+#define KD_PITCH 110
 
 void input_data_wahana();
 /* USER CODE END PD */
@@ -141,8 +141,8 @@ float baca_potensio(){
 		  HAL_ADC_Stop(&hadc1);
 		  data_potensio = HAL_ADC_GetValue(&hadc1);
 		  analog_potensio = (float)data_potensio;
-		  if (analog_potensio > 4000) analog_potensio = 4000;
-		  return analog_potensio*(180.0f/4000.0f);
+		  if (analog_potensio > 5200) analog_potensio = 5200;
+		  return analog_potensio*(180.0f/5200.0f);
 }
 void GetPOTENSIO(){
 	  data_Pitch1 = baca_potensio();
@@ -304,10 +304,12 @@ void baca_input(){
 //------------------------PID CONTROL-----------------------
 void PID_PITCH(){
 	errorPitch = setPoint_pitch - data_Pitch1;
-	int maxPitchSpeed = 300;
+	int maxPitchSpeed = 900;
+	ukuranstring = sprintf((char*)buffer, "erorPitch = %f", errorPitch);
+	HAL_UART_Transmit(&huart1, buffer, ukuranstring, 10);
 	if (errorPitch < 0){
 		dir_pitch = 0;   //TURUN
-		maxPitchSpeed = 90;
+		maxPitchSpeed = 250;
 	} else {
 		dir_pitch = 1;  //NAIK
 	}
@@ -477,7 +479,7 @@ int main(void)
   bacaheading();
   HAL_ADC_Start(&hadc1);
 
-  //interupt usart3
+  //interupt usart4
   __HAL_UART_ENABLE_IT(&huart4, UART_IT_IDLE);
   if(HAL_UART_Receive_DMA(&huart4, dma_rx4_buf, DMA_BUF_SIZE) != HAL_OK){
 	  Error_Handler();
@@ -516,8 +518,8 @@ int main(void)
 	  GetPOTENSIO();
 	  cek_heading();
 	  baca_input();     //send : "#,{arahVertikal},{arahHorizontal}\n
-	  PID_YAW();
 	  PID_PITCH();
+	  PID_YAW();
 	  kirim_GCS();
     /* USER CODE END WHILE */
 
