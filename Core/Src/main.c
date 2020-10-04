@@ -93,6 +93,7 @@ float errorI_yaw, hasilErrorYaw, pidy;
 float data_heading, data_Pitch1;
 //---------VAR GPS ACSES-----
 float lon_gps, lat_gps;
+char lat[20], lat_a, lon[20], lon_a;
 DMA_Event_t dma_uart4_rx = {0, 0, DMA_BUF_SIZE};
 uint8_t dma_rx4_buf[DMA_BUF_SIZE];
 uint8_t data_gps[DMA_BUF_SIZE] = {'\0'};
@@ -218,10 +219,6 @@ void SetDriverMotor_pitch(int arah, uint16_t pwm ){
 void gps_parse(){
 	if(UART4DataFlag == 1){
 				  char *pointer;
-				  char lat[20];
-				  char lat_a;
-				  char lon[20];
-				  char lon_a;
 				  int length = sizeof(data_gps);
 
 				  memset(lat, '\0', 20);
